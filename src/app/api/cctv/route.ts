@@ -519,8 +519,17 @@ export async function GET(request: Request) {
       regionsToFetch = Object.keys(REGION_FETCHERS);
     }
 
+    // Bound each region so a single hung upstream (a dead traffic-cam server)
+    // can't stall the whole batch — return whatever loaded within the budget.
+    const REGION_BUDGET_MS = 15000;
+    const withBudget = (p: Promise<any[]>): Promise<any[]> =>
+      Promise.race([
+        p.catch(() => []),
+        new Promise<any[]>(resolve => setTimeout(() => resolve([]), REGION_BUDGET_MS)),
+      ]);
+
     const results = await Promise.allSettled(
-      regionsToFetch.map(r => REGION_FETCHERS[r]())
+      regionsToFetch.map(r => withBudget(REGION_FETCHERS[r]()))
     );
 
     const allCameras: any[] = [];
